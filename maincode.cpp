@@ -1,227 +1,361 @@
 #include <iostream>
 #include <vector>
-#include <limits>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+#include <algorithm>
 #include <fstream>
-#include <iomanip> // For std::setw
-#include <conio.h> // for getch()
-#include <string>
-
+#include <cstdlib>
+#include <ctime>
 using namespace std;
 
-mutex mtx; // Mutex for synchronizing access to shared resources
-condition_variable cv; // Condition variable for signaling between threads
-ofstream logFile("bankers_log.txt"); // Log file for recording events
-
 // ANSI escape codes for color output
-const string RESET = "\033[0m";
-const string RED = "\033[31m";
-const string GREEN = "\033[32m";
-const string YELLOW = "\033[33m";
-const string BLUE = "\033[34m";
+#define RESET "\033[0m"
+#define RED "\033[31m"
+#define GREEN "\033[32m"
+#define YELLOW "\033[33m"
+#define BLUE "\033[34m"
 
-// Function to validate integer input
-int getValidatedInput(int min, int max) {
-    int value;
-    while (true) {
-        cin >> value;
-        if (cin.fail() || value < min || value > max) {
-            cin.clear(); // Clear the error flag
-            cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Discard invalid input
-            cout << RED << "Invalid input. Please enter a value between " << min << " and " << max << ": " << RESET;
-        } else {
-            cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Discard any extra input
-            return value;
+int nprocesses = 5, nresources = 4;
+vector<int> seq;
+
+typedef struct {
+    int id;
+    vector<int> Max; // Max resources needed
+    vector<int> Allocation; // Allocated resources
+    vector<int> Need; // Resources needed
+    bool status;
+    int priority; // Priority for scheduling
+} process;
+
+vector<process> processes;
+vector<int> available;
+vector<int> total_resources;
+
+// Function to display the Allocation Table
+void DisplayAllocationTable(vector<process> processes) {
+    cout << "\n\tAllocation Table";
+    cout << "\nProcess\t";
+    for (int i = 0; i < nresources; i++) {
+        cout << "R" << i << "\t";
+    }
+    cout << endl;
+
+    for (int i = 0; i < nprocesses; i++) {
+        cout << "P" << i << "\t";
+        for (int j = 0; j < nresources; j++) {
+            cout << processes[i].Allocation[j] << "\t";
         }
+        cout << endl;
     }
 }
 
-// Function to log messages to the log file
-void logMessage(const string& message) {
-    cout << message << endl; // Print to console
-    logFile << message << endl; // Log to file
-}
-
-// Function to simulate resource request by a process
-void requestResources(int processID, vector<vector<int>>& allocation, vector<vector<int>>& need, vector<int>& available) {
-    unique_lock<mutex> lock(mtx); // Lock the mutex for this thread
-
-    // Simulate resource request (for demonstration purposes)
-    for (int j = 0; j < available.size(); j++) {
-        if (need[processID][j] > available[j]) {
-            logMessage(YELLOW + "Process P[" + to_string(processID) + "] waiting for resources..." + RESET);
-            cv.wait(lock); // Wait until notified
-        }
-    }
-
-    // Allocate resources if available
-    for (int j = 0; j < available.size(); j++) {
-        available[j] -= need[processID][j];
-        allocation[processID][j] += need[processID][j];
-    }
-
-    logMessage(GREEN + "Process P[" + to_string(processID) + "] has been allocated resources." + RESET);
-    lock.unlock();
-    cv.notify_all(); // Notify other waiting processes
-}
-
-// Function to release resources after process completion
-void releaseResources(int processID, vector<vector<int>>& allocation, vector<int>& available) {
-    unique_lock<mutex> lock(mtx); // Lock the mutex for this thread
-
-    for (int j = 0; j < available.size(); j++) {
-        available[j] += allocation[processID][j];
-        allocation[processID][j] = 0; // Release allocated resources
-    }
-
-    logMessage(GREEN + "Process P[" + to_string(processID) + "] has released resources." + RESET);
-    lock.unlock();
-    cv.notify_all(); // Notify other waiting processes
-}
-
-// Function to display current state of resources and allocations in a cool format
-void displayState(const vector<vector<int>>& allocation, const vector<vector<int>>& need, const vector<int>& available) {
-    cout << "\n============================== Current State ==============================\n";
-    cout << setw(10) << "Process" << setw(15) << "Allocation" << setw(15) << "Need" << endl;
-
-    cout << "--------------------------------------------------------------------------\n";
-
-    for (size_t i = 0; i < allocation.size(); i++) {
-        cout << setw(10) << "P[" + to_string(i) + "]";
-        for (const auto& alloc : allocation[i]) {
-            cout << setw(5) << alloc;
-        }
-        cout << setw(15);
-        for (const auto& req : need[i]) {
-            cout << setw(5) << req;
+// Function to display the randomly generated input
+void DisplayRandomInput(vector<process> processes, vector<int> available) {
+    cout << "\n\tRandomly Generated Input";
+    cout << "\n\nMax Matrix:\n";
+    for (int i = 0; i < nprocesses; i++) {
+        cout << "P" << i << "\t";
+        for (int j = 0; j < nresources; j++) {
+            cout << processes[i].Max[j] << "\t";
         }
         cout << endl;
     }
 
-    cout << "--------------------------------------------------------------------------\n";
-
-    cout << "\nAvailable Resources:\n";
-    cout << "----------------------\n";
-
-    for (size_t i = 0; i < available.size(); i++) {
-        cout << "R[" + to_string(i) + "] = " << available[i] << endl;
+    cout << "\nAllocation Matrix:\n";
+    for (int i = 0; i < nprocesses; i++) {
+        cout << "P" << i << "\t";
+        for (int j = 0; j < nresources; j++) {
+            cout << processes[i].Allocation[j] << "\t";
+        }
+        cout << endl;
     }
 
-    cout << "--------------------------------------------------------------------------\n";
+    cout << "\nAvailable Vector:\n";
+    for (int j = 0; j < nresources; j++) {
+        cout << available[j] << "\t";
+    }
+    cout << endl;
 }
 
-// Function to run the Banker's Algorithm simulation
-void runBankersAlgorithm() {
-    int countofr, countofp;
+// Function to check if the system is in a safe state
+bool IsSafe(vector<process> processes, vector<int> available) {
+    vector<int> work = available;
+    vector<bool> finish(nprocesses, false);
+    seq.clear();
 
-    cout << "\nEnter the number of resources (1 to 5): ";
-    countofr = getValidatedInput(1, 5);
-
-    vector<int> instance(countofr);
-    vector<int> available(countofr);
-    vector<vector<int>> allocation(10, vector<int>(countofr));
-    vector<vector<int>> max(10, vector<int>(countofr));
-    vector<vector<int>> need(10, vector<int>(countofr));
-
-    for (int i = 0; i < countofr; i++) {
-        cout << "\nEnter the max instances of Resource R[" << i << "] (non-negative integer): ";
-        while (true) {
-            cin >> instance[i];
-            if (cin.fail() || instance[i] < 0) {
-                cin.clear();
-                cin.ignore(numeric_limits<streamsize>::max(), '\n');
-                cout << RED << "Invalid input. Please enter a non-negative integer: " << RESET;
-            } else {
-                available[i] = instance[i];
-                break;
-            }
-        }
-    }
-
-    cout << "\nEnter the number of processes (1 to 10): ";
-    countofp = getValidatedInput(1, 10);
-
-    cout << "\nEnter the allocation matrix:\n";
-    for (int i = 0; i < countofp; i++) {
-        cout << "For the process P[" << i << "]\n";
-        for (int j = 0; j < countofr; j++) {
-            cout << "Allocation of resource R[" << j << "] (non-negative integer): ";
-            while (true) {
-                cin >> allocation[i][j];
-                if (cin.fail() || allocation[i][j] < 0) {
-                    cin.clear();
-                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
-                    cout << RED << "Invalid input. Please enter a non-negative integer: " << RESET;
-                } else if (allocation[i][j] > instance[j]) {
-                    cout << RED << "Allocation cannot exceed maximum instances. Please enter again: " << RESET;
-                } else {
-                    available[j] -= allocation[i][j];
-                    break;
+    while (true) {
+        bool found = false;
+        for (int i = 0; i < nprocesses; i++) {
+            if (!finish[i]) {
+                bool can_allocate = true;
+                for (int j = 0; j < nresources; j++) {
+                    if (processes[i].Need[j] > work[j]) {
+                        can_allocate = false;
+                        break;
+                    }
+                }
+                if (can_allocate) {
+                    for (int j = 0; j < nresources; j++) {
+                        work[j] += processes[i].Allocation[j];
+                    }
+                    finish[i] = true;
+                    seq.push_back(i);
+                    found = true;
                 }
             }
         }
+        if (!found) break;
     }
 
-    cout << "\nEnter the MAX matrix:\n";
-    for (int i = 0; i < countofp; i++) {
-        cout << "For the process P[" << i << "]\n";
-        for (int j = 0; j < countofr; j++) {
-            cout << "Max demand of resource R[" << j << "] (non-negative integer): ";
-            while (true) {
-                cin >> max[i][j];
-                if (cin.fail() || max[i][j] < 0) {
-                    cin.clear();
-                    cin.ignore(numeric_limits<streamsize>::max(), '\n');
-                    cout << RED << "Invalid input. Please enter a non-negative integer: " << RESET;
-                } else if (max[i][j] < allocation[i][j]) {
-                    cout << RED << "Max demand cannot be less than allocation. Please enter again: " << RESET;
-                } else {
-                    break;
-                }
-            }
+    for (int i = 0; i < nprocesses; i++) {
+        if (!finish[i]) return false;
+    }
+    return true;
+}
+
+// Function to simulate resource requests by a process
+bool Request(vector<process> processes, vector<int> available, int p, vector<int> req) {
+    for (int j = 0; j < nresources; j++) {
+        if (req[j] > available[j] || req[j] > processes[p].Need[j]) {
+            return false;
         }
     }
 
-   // Calculate NEED matrix
-   for (int i = 0; i < countofp; i++) {
-       for (int j = 0; j < countofr; j++) {
-           need[i][j] = max[i][j] - allocation[i][j];
-       }
-   }
+    for (int j = 0; j < nresources; j++) {
+        available[j] -= req[j];
+        processes[p].Allocation[j] += req[j];
+        processes[p].Need[j] -= req[j];
+    }
 
-   // Create threads for each process requesting resources
-   vector<thread> threads;
-   for (int i = 0; i < countofp; i++) {
-       threads.emplace_back(requestResources, i, ref(allocation), ref(need), ref(available));
-   }
-
-   // Join all threads
-   for (auto& th : threads) {
-       th.join();
-       releaseResources(th.get_id().hash() % countofp, allocation, available); // Simulate releasing resources after completion
-   }
-
-   displayState(allocation, need, available); // Show current state after execution
-
-   logFile.close(); // Close log file at the end of execution
-
-   cout << GREEN + "\nSimulation complete. Check bankers_log.txt for details." + RESET<< endl;
+    return IsSafe(processes, available);
 }
 
-// Main function to provide testing options
+// Function to release resources
+void ReleaseResources(int pid, vector<process> &processes, vector<int> &available) {
+    for (int j = 0; j < nresources; j++) {
+        available[j] += processes[pid].Allocation[j];
+        processes[pid].Allocation[j] = 0;
+        processes[pid].Need[j] = 0;
+    }
+    processes[pid].status = true;
+    cout << GREEN << "Process P[" << pid << "] released resources." << RESET << endl;
+}
+
+// Function to generate random inputs
+void GenerateRandomInput(vector<process> &processes, vector<int> &available) {
+    srand(time(NULL));
+    for (int i = 0; i < nprocesses; i++) {
+        for (int j = 0; j < nresources; j++) {
+            processes[i].Max[j] = rand() % 10 + 1;
+            processes[i].Allocation[j] = rand() % (processes[i].Max[j] + 1);
+            processes[i].Need[j] = processes[i].Max[j] - processes[i].Allocation[j];
+            available[j] += processes[i].Allocation[j];
+        }
+    }
+    for (int j = 0; j < nresources; j++) {
+        available[j] = rand() % 10 + 1;
+    }
+}
+
+// Function to display the safe sequence step-by-step
+void DisplaySafeSequenceSteps(vector<process> processes, vector<int> available) {
+    vector<int> work = available;
+    vector<bool> finish(nprocesses, false);
+    vector<int> safe_sequence;
+
+    while (safe_sequence.size() < nprocesses) {
+        bool found = false;
+        for (int i = 0; i < nprocesses; i++) {
+            if (!finish[i]) {
+                bool can_allocate = true;
+                for (int j = 0; j < nresources; j++) {
+                    if (processes[i].Need[j] > work[j]) {
+                        can_allocate = false;
+                        break;
+                    }
+                }
+                if (can_allocate) {
+                    for (int j = 0; j < nresources; j++) {
+                        work[j] += processes[i].Allocation[j];
+                    }
+                    finish[i] = true;
+                    safe_sequence.push_back(i);
+                    found = true;
+                    cout << "Step " << safe_sequence.size() << ": P" << i << " added to safe sequence." << endl;
+                }
+            }
+        }
+        if (!found) {
+            cout << "No safe sequence found." << endl;
+            return;
+        }
+    }
+    cout << "Safe sequence: ";
+    for (int i = 0; i < safe_sequence.size(); i++) {
+        cout << "P" << safe_sequence[i];
+        if (i != safe_sequence.size() - 1) cout << " -> ";
+    }
+    cout << endl;
+}
+
+// Function to log events
+void LogEvent(const string &message) {
+    ofstream logFile("bankers_log.txt", ios::app);
+    logFile << message << endl;
+    logFile.close();
+}
+
+// Function to export results
+void ExportResults(const vector<int> &safe_sequence) {
+    ofstream outFile("results.txt");
+    outFile << "Safe Sequence: ";
+    for (int i = 0; i < safe_sequence.size(); i++) {
+        outFile << "P" << safe_sequence[i];
+        if (i != safe_sequence.size() - 1) outFile << " -> ";
+    }
+    outFile.close();
+}
+
+// Function to validate inputs
+bool ValidateInput(vector<process> processes, vector<int> available) {
+    for (int i = 0; i < nprocesses; i++) {
+        for (int j = 0; j < nresources; j++) {
+            if (processes[i].Allocation[j] > processes[i].Max[j]) {
+                cout << RED << "Error: Allocation exceeds Max for P" << i << " R" << j << RESET << endl;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Function to display the menu
+void DisplayMenu() {
+    cout << "\n1. Check Safe State\n";
+    cout << "2. Make Resource Request\n";
+    cout << "3. Release Resources\n";
+    cout << "4. Generate Random Input\n";
+    cout << "5. Display Random Input\n";
+    cout << "6. Exit\n";
+    cout << "Enter your choice: ";
+}
+
 int main() {
+    srand(time(NULL));
     char choice;
+    int p;
+    vector<int> req(nresources, 0);
 
     do {
-        runBankersAlgorithm();
+        // Clear vectors
+        seq.clear();
+        available.clear();
+        processes.clear();
+        available.resize(nresources);
+        processes.resize(nprocesses);
 
-        cout<< YELLOW + "\nDo you want to test another scenario? (y/n): " + RESET;
+        cout << "\nEnter num of resources : ";
+        cin >> nresources;
+        cout << "Enter num of processes : ";
+        cin >> nprocesses;
+        cout << endl;
+
+        // Get Allocation Matrix
+        for (int i = 0; i < nprocesses; i++) {
+            processes[i].Max.resize(nresources);
+            processes[i].Allocation.resize(nresources);
+            processes[i].Need.resize(nresources);
+            processes[i].id = i;
+            processes[i].status = false;
+
+            cout << "Enter Allocation array for P" << i << " : ";
+            for (int j = 0; j < nresources; j++) {
+                cin >> processes[i].Allocation[j];
+            }
+        }
+        cout << endl;
+
+        // Get Max Matrix
+        for (int i = 0; i < nprocesses; i++) {
+            cout << "Enter Max array for P" << i << " : ";
+            for (int j = 0; j < nresources; j++) {
+                cin >> processes[i].Max[j];
+                processes[i].Need[j] = processes[i].Max[j] - processes[i].Allocation[j];
+            }
+        }
+
+        // Get Available Matrix
+        cout << "\nEnter Available array " << endl;
+        for (int j = 0; j < nresources; j++)
+            cin >> available[j];
+
+        // Display Allocation Table
+        DisplayAllocationTable(processes);
+
+        // Display Menu
+        char innerChoice;
+        do {
+            DisplayMenu();
+            cin >> innerChoice;
+
+            switch (innerChoice) {
+                case '1':
+                    if (IsSafe(processes, available)) {
+                        cout << GREEN << "Yes, Safe state <";
+                        for (int i = 0; i < seq.size(); i++) {
+                            cout << "P" << seq[i];
+                            if (i != seq.size() - 1) cout << ",";
+                            else cout << ">" << RESET << endl;
+                        }
+                    } else {
+                        cout << RED << "No, Unsafe state" << RESET << endl;
+                    }
+                    break;
+
+                case '2':
+                    cout << "Enter process index: ";
+                    cin >> p;
+                    cout << "Enter request for P" << p << " : ";
+                    for (int j = 0; j < nresources; j++) {
+                        cin >> req[j];
+                    }
+                    if (Request(processes, available, p, req)) {
+                        cout << GREEN << "Request granted. Safe state maintained." << RESET << endl;
+                    } else {
+                        cout << RED << "Request denied. Unsafe state." << RESET << endl;
+                    }
+                    break;
+
+                case '3':
+                    cout << "Enter process index to release resources: ";
+                    cin >> p;
+                    ReleaseResources(p, processes, available);
+                    break;
+
+                case '4':
+                    GenerateRandomInput(processes, available);
+                    cout << GREEN << "Random input generated." << RESET << endl;
+                    break;
+
+                case '5':
+                    DisplayRandomInput(processes, available);
+                    break;
+
+                case '6':
+                    cout << "Exiting..." << endl;
+                    break;
+
+                default:
+                    cout << RED << "Invalid choice. Try again." << RESET << endl;
+            }
+
+            if (innerChoice != '6') {
+                cout << "\nDo you want to perform another operation? (y/n): ";
+                cin >> choice;
+            }
+        } while (choice == 'y' || choice == 'Y');
+
+        cout << "\nDo you want to test again with new inputs? (y/n): ";
         cin >> choice;
+    } while (choice == 'y' || choice == 'Y');
 
-    } while(choice == 'y' || choice == 'Y');
-
-   getch(); // Wait for key press
-   return 0;
+    return 0;
 }
