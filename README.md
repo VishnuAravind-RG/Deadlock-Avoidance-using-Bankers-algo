@@ -1,42 +1,101 @@
-# Banker's Algorithm Implementation
+# Banker's Algorithm with Priority Scheduling
 
-## Overview
-This project implements the Banker's Algorithm, a resource allocation and deadlock avoidance algorithm used in operating systems. The algorithm checks whether a system is in a safe state and helps prevent deadlocks by ensuring that resource requests can be satisfied without leading to an unsafe condition.
+![C++](https://img.shields.io/badge/Language-C%2B%2B-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-## Features
-- **Dynamic Resource Management**: Supports varying numbers of resources and processes.
-- **Process Synchronization**: Utilizes mutexes and condition variables to manage concurrent access to shared resources.
-- **Interactive User Interface**: Prompts users for input and displays the current state of resources and allocations in a user-friendly format.
-- **Color-Coded Output**: Enhances visibility of messages using ANSI escape codes.
-- **Logging**: Records significant events in a log file for later review.
-- **Resource Request Simulation**: Allows users to simulate dynamic resource requests during execution.
-- **Process Completion Simulation**: Simulates process completion and resource release based on user input.
+## 📌 Overview
+This project implements the **Banker's Algorithm** with an added **priority scheduling** feature. It ensures safe resource allocation by considering both process priority and available system resources.
 
-## Requirements
-- C++ Compiler (e.g., g++, clang++)
-- C++ Standard Library
+## 📁 Project Structure
+```
+📂 Bankers-Algorithm-Priority
+├── 📄 CMakeLists.txt    # Build configuration
+├── 📂 src              # Source code
+│   ├── main.cpp       # Core implementation
+│   ├── banker.cpp     # Banker's algorithm logic
+│   ├── banker.h       # Header file
+├── 📂 examples         # Sample input/output
+├── 📄 README.md        # Project documentation
+├── 📄 LICENSE          # MIT License details
+```
 
-## Installation
-1. Clone the repository:
+## ⚙️ Installation & Compilation
+### Prerequisites
+- C++ Compiler (GCC, Clang, or MSVC)
+- CMake (for cross-platform building)
 
-2. Compile the program:
+### Steps to Compile & Run
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/Bankers-Algorithm-Priority.git
+cd Bankers-Algorithm-Priority
 
-## Usage
-1. Run the program:
+# Build using CMake
+mkdir build && cd build
+cmake ..
+make
 
-2. Follow the prompts to enter the number of resources, processes, allocation matrix, and maximum demand matrix.
+# Run the executable
+./banker
+```
 
-3. After entering the required information, the program will simulate resource allocation and display the current state of resources.
+## 📝 Input Configuration
+```plaintext
+Number of resources: 3
+Number of processes: 5
 
-4. You can choose to test multiple scenarios by following the on-screen instructions.
+Process P0:
+- Max: 7 5 3
+- Allocation: 0 1 0
+- Priority: 5
 
-## Example Input
+Process P1:
+- Max: 3 2 2
+- Allocation: 2 0 0
+- Priority: 3
 
-## License
+Available: 3 3 2
+```
+
+## 📌 Sample Output
+```plaintext
+[SYSTEM] Current State:
+Process  Allocation    Need       Priority
+P0       0 1 0        7 4 3      5
+P1       2 0 0        1 2 2      3
+P2       3 0 2        6 0 0      7
+
+Available: 3 3 2
+
+[LOG] Process P2 (Priority 7) allocated resources
+[LOG] Safe sequence: P2 → P0 → P1 → P3 → P4
+```
+
+## 🎯 Features
+✅ Implements Banker's Algorithm for deadlock prevention  
+✅ Incorporates Priority Scheduling for resource allocation  
+✅ Dynamic safety sequence generation  
+✅ Logging for debugging and analysis  
+✅ Optimized for C++ with efficient data structures  
+
+## 🔍 How It Works
+1. **Input Processing**: Reads number of processes, resources, allocation, and priorities.
+2. **Need Calculation**: Computes remaining resource needs for each process.
+3. **Safe Sequence Generation**: Uses priority scheduling to determine execution order.
+4. **Resource Allocation**: Allocates resources based on availability and priority.
+5. **Execution Log**: Outputs safe execution sequence if possible.
+
+## 📜 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributing
-Contributions are welcome! Please feel free to submit a pull request or open an issue if you have suggestions or improvements.
+## 📢 Contributing
+1. Fork the repository 🍴
+2. Create a new branch 🚀 (`git checkout -b feature-name`)
+3. Commit changes 🎯 (`git commit -m 'Add feature'`)
+4. Push to branch ⬆️ (`git push origin feature-name`)
+5. Submit a Pull Request 🤝
 
-## Acknowledgments
-- Inspired by concepts from operating systems courses and literature.
+
+---
+💡 _"Efficient resource allocation ensures smooth system performance!"_ 🚀
+
